@@ -1,0 +1,24 @@
+# Python
+**/__pycache__/
+**/*.egg-info/
+
+
+# Environment
+.venv*/
+.env
+
+# Debug
+**/.pytest_cache/
+playground/
+
+# Tracking
+swanlog/
+
+# Experiment result
+/data/
+swanlog/
+slurm-*.out
+
+# OS specific
+.DS_Store
+
