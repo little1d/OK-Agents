@@ -22,3 +22,6 @@ slurm-*.out
 # OS specific
 .DS_Store
 
+# Distribution / packaging
+.Python
+build/
