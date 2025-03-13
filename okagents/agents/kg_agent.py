@@ -27,18 +27,12 @@ class KGAgent:
     def __init__(
         self,
         model: Optional[BaseModelBackend] = None,
-        truncate: bool = False,
-        max_nodes: int = 100,
-        max_relationships: int = 200,
     ):
         """
         初始化 KGAgent，集成 CAMEL 和 模型
 
         Args:
             model (Optional[BaseModelBackend]): 模型后端
-            truncate (bool): 是否截断大列表
-            max_nodes (int): 最大节点数限制
-            max_relationships (int): 最大关系数限制
         """
         self.uio = UnstructuredIO()
         # 初始化 Knowledge Graph Agent
@@ -49,17 +43,12 @@ class KGAgent:
             url=config.NEO4J_URL,
             username=config.NEO4J_USERNAME,
             password=config.NEO4J_PASSWORD,
-            truncate=truncate,
         )
-
-        # 配置参数
-        self.max_nodes = max_nodes
-        self.max_relationships = max_relationships
 
     def pre_parse(
         self,
         content: Union[str, 'Element'],
-        prompt: Optional[str],
+        prompt: Optional[str] = None,
         should_chunk: bool = True,
         max_characters=500,
     ) -> str:
@@ -129,11 +118,11 @@ class KGAgent:
         # TODO 添加验证的逻辑  获取当前知识库节点和关系 --> 进行内容删减
         return content
 
-    def parse(self, content: str, id: int) -> None:
+    def parse(self, content: str) -> None:
         """
         解析文件，并转换为 node 和 relation，再将知识图谱元素保存到 Neo4j
         """
-        pre_parsed = self.pre_parse(content=content, id=id)
+        pre_parsed = self.pre_parse(content=content)
         validate = self.validate(pre_parsed)
         # 转换为 GraphElement 对象，以添加进 Knowledge Graph
         graph_elements = self.kg_agent.run(
