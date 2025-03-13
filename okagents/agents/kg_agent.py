@@ -14,6 +14,9 @@ from camel.models import BaseModelBackend
 from unstructured.documents.elements import Element
 from typing import Optional, Any, Union, List
 from camel.loaders import UnstructuredIO
+import os
+import warnings
+from urllib.parse import urlparse
 
 from okagents.config import Config
 
@@ -53,37 +56,69 @@ class KGAgent:
         self.max_nodes = max_nodes
         self.max_relationships = max_relationships
 
-    def pre_parse(self, content: str, id: int, prompt: Optional[str]) -> str:
+    def pre_parse(
+        self,
+        content: Union[str, 'Element'],
+        prompt: Optional[str],
+        should_chunk: bool = True,
+        max_characters=500,
+    ) -> str:
         """
-        解析非结构化内容为知识图谱相关内容，目前只支持 text，返回 str
+        References:
+            https://github.com/camel-ai/camel/blob/master/camel/retrievers/vector_retriever.py
+
+        解析非结构化内容为知识图谱相关内容，支持 file、url 或纯文本。
+        自动判断内容类型并执行分块处理。
+
         # TODO 目前 prompt 使用 camel 自定义的 system propmpt，返回的是 GraphElement 类似的 str形式。
         # 因为增加了 validate 部分，所以其实并不用严格返回，可以留到后面处理，需要自定义 prompt！！！
-        # TODO  https://docs.camel-ai.org/camel.loaders.html#camel.loaders.unstructured_io.UnstructuredIO
-        # 自动支持 url, file, json
         """
-        # ---------------------------------- 支持 text ----------------------------------
-        graph_element = self.uio.create_element_from_text(
-            text=content, element_id=id
-        )
+        elements = []
 
-        # ---------------------------------- parse_file_or_url ----------------------------------
+        if isinstance(content, Element):
+            elements = [content]
 
-        # elements = self.uio.parse_file_or_url(input_path="")
-        # chunk_elements = self.uio.chunk_elements(
-        #     chunk_type="chunk_by_title", elements=elements
-        # )
-        # graph_elements = []
-        # for chunk in chunk_elements:
-        #     graph_element = self.kg_agent.run(chunk, parse_graph_elements=True)
-        #     graph_elements.append(graph_element)
-        # Let Knowledge Graph Agent extract node and relationship information
+        elif isinstance(content, str):
+            # 检查是否是 URL
+            parsed_url = urlparse(content)
+            is_url = all([parsed_url.scheme, parsed_url.netloc])
+            if is_url or os.path.exists(content):
+                # 如果是 URL 或文件路径，解析文件或 URL
+                elements = self.uio.parse_file_or_url(input_path=content) or []
+                print(
+                    f"Parsed content from {'URL' if is_url else 'file'}: {content}"
+                )
+            else:
+                # 如果是纯文本，创建文本元素
+                elements = [
+                    self.uio.create_element_from_text(
+                        text=content,
+                    )
+                ]
+                print(f"Parsed content as plain text : {elements}")
 
-        # run the agent to extract node and relationship information
-        # TODO 添加 prompt 参数，限制其不返回 GraphElement 形式，并限制字数...
-        pre_parsed_elements = self.kg_agent.run(
-            element=graph_element,
-            parse_graph_elements=False,
-        )
+        if not elements:
+            warnings.warn(
+                f"No elements were extracted from the content: {content}"
+            )
+        else:
+            # Chunk the content if required
+            chunks = (
+                self.uio.chunk_elements(
+                    chunk_type="chunk_by_title",
+                    elements=elements,
+                    max_characters=max_characters,
+                )
+                if should_chunk
+                else elements
+            )
+            print(f"Chunked content into {len(chunks)} parts")
+
+            # 运行知识图谱代理提取信息
+            pre_parsed_elements = self.kg_agent.run(
+                element=chunks,
+                parse_graph_elements=False,
+            )
 
         return pre_parsed_elements
 
