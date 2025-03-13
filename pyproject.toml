@@ -1,5 +1,5 @@
 [project]
-name = "knowledge-agent"
+name = "okagents"
 version = "0.0.1"
 description = "Add your description here"
 readme = "README.md"
@@ -12,10 +12,10 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["okagents"]
 
 [tool.jupyter]
-notebook-dir = "src"
+notebook-dir = "okagents"
 
 [build-system]
 requires = ["hatchling"]
