@@ -14,19 +14,16 @@ from camel.models import BaseModelBackend
 from unstructured.documents.elements import Element
 from typing import Optional, Any, Union, List
 from camel.loaders import UnstructuredIO
-from camel.retrievers import AutoRetriever
-from camel.messages import BaseMessage
+
+from okagents.config import Config
+
+config = Config()
 
 
 class KGAgent:
     def __init__(
         self,
-        neo4j_url: str,
-        neo4j_username: str,
-        neo4j_password: str,
         model: Optional[BaseModelBackend] = None,
-        database: str = "neo4j",
-        timeout: Optional[float] = None,
         truncate: bool = False,
         max_nodes: int = 100,
         max_relationships: int = 200,
@@ -35,12 +32,7 @@ class KGAgent:
         初始化 KGAgent，集成 CAMEL 和 模型
 
         Args:
-            neo4j_url (str): Neo4j 数据库 URL
-            neo4j_username (str): Neo4j 用户名
-            neo4j_password (str): Neo4j 密码
-            model (Optional[BaseModelBackend]): 模型后端，默认为 Mistral Large 2
-            database (str): 数据库名称，默认为 "neo4j"
-            timeout (Optional[float]): 超时时间
+            model (Optional[BaseModelBackend]): 模型后端
             truncate (bool): 是否截断大列表
             max_nodes (int): 最大节点数限制
             max_relationships (int): 最大关系数限制
@@ -51,11 +43,9 @@ class KGAgent:
 
         # 初始化 Neo4j 连接
         self.neo4j_graph = Neo4jGraph(
-            url=neo4j_url,
-            username=neo4j_username,
-            password=neo4j_password,
-            database=database,
-            timeout=timeout,
+            url=config.NEO4J_URL,
+            username=config.NEO4J_USERNAME,
+            password=config.NEO4J_PASSWORD,
             truncate=truncate,
         )
 
@@ -63,15 +53,20 @@ class KGAgent:
         self.max_nodes = max_nodes
         self.max_relationships = max_relationships
 
-    def parse(self, content: str, id: int) -> str:
+    def pre_parse(self, content: str, id: int, prompt: Optional[str]) -> str:
         """
         解析非结构化内容为知识图谱相关内容，目前只支持 text，返回 str
+        # TODO 目前 prompt 使用 camel 自定义的 system propmpt，返回的是 GraphElement 类似的 str形式。
+        # 因为增加了 validate 部分，所以其实并不用严格返回，可以留到后面处理，需要自定义 prompt！！！
+        # TODO  https://docs.camel-ai.org/camel.loaders.html#camel.loaders.unstructured_io.UnstructuredIO
+        # 自动支持 url, file, json
         """
-        # 使用 model 进行内容解析
-        element = self.uio.create_element_from_text(
+        # ---------------------------------- 支持 text ----------------------------------
+        graph_element = self.uio.create_element_from_text(
             text=content, element_id=id
         )
-        # ---------------------------------- 支持 file or url ----------------------------------
+
+        # ---------------------------------- parse_file_or_url ----------------------------------
 
         # elements = self.uio.parse_file_or_url(input_path="")
         # chunk_elements = self.uio.chunk_elements(
@@ -82,22 +77,36 @@ class KGAgent:
         #     graph_element = self.kg_agent.run(chunk, parse_graph_elements=True)
         #     graph_elements.append(graph_element)
         # Let Knowledge Graph Agent extract node and relationship information
-        parsed = self.kg_agent.run(element=element, parse_graph_elements=False)
 
-        return parsed
+        # run the agent to extract node and relationship information
+        # TODO 添加 prompt 参数，限制其不返回 GraphElement 形式，并限制字数...
+        pre_parsed_elements = self.kg_agent.run(
+            element=graph_element,
+            parse_graph_elements=False,
+        )
 
-    def validate(self, str) -> str:
-        """
-        验证知识图谱元素，额外用一个 ChatAgent
-        """
-        pass
+        return pre_parsed_elements
 
-    def save(self, content: str, id: int) -> None:
+    def validate(self, content: str) -> str:
         """
-        将知识图谱元素保存到 Neo4j
+        验证pre-parsed 的准确性，并做出验证和删减（避免内容过多重复），额外用一个 ChatAgent/其他策略
         """
-        graph_elements = self.parse(content=content, id=id)
-        self.neo4j_graph.add_graph_elements(graph_elements=[graph_elements])
+        # TODO 添加验证的逻辑  获取当前知识库节点和关系 --> 进行内容删减
+        return content
+
+    def parse(self, content: str, id: int) -> None:
+        """
+        解析文件，并转换为 node 和 relation，再将知识图谱元素保存到 Neo4j
+        """
+        pre_parsed = self.pre_parse(content=content, id=id)
+        validate = self.validate(pre_parsed)
+        # 转换为 GraphElement 对象，以添加进 Knowledge Graph
+        graph_elements = self.kg_agent.run(
+            element=validate, parse_graph_elements=True
+        )
+        self.neo4j_graph.add_graph_elements(
+            graph_elements=[graph_elements],
+        )
 
     def run(
         self,
@@ -105,17 +114,11 @@ class KGAgent:
     ) -> Any:
         """
         运行检索和推理
-
-        Args:
-            query: 查询语句
-
-        Returns:
-            检索内容
         """
         query_element = self.uio.create_element_from_text(
             text=query,
         )
-        # Let Knowledge Graph Agent extract node and relationship information from the qyery
+        # Let Knowledge Graph Agent extract node and relationship information from the query
         ans_element = self.kg_agent.run(
             query_element, parse_graph_elements=True
         )
@@ -134,8 +137,6 @@ class KGAgent:
 
         kg_result = [item['Description'] for item in kg_result]
 
-        # Show the result from knowledge graph database
-        print(kg_result)
         return kg_result
 
     def update(self, content: Union[str, "Element"], **kwargs) -> None:
