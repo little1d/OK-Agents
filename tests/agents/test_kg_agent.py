@@ -38,7 +38,7 @@ def test_str_processing(kg_agent):
 
     kg_agent.parse(content=test_data)
 
-    results = kg_agent.run(query=["LLM", "reasoning"])
+    results = kg_agent.run_retriever(query="LLM")
 
     assert len(results) > 0
 
@@ -58,7 +58,7 @@ def test_pdf_file_processing(kg_agent):
 
     kg_agent.parse(content=test_pdf_path)
 
-    results = kg_agent.run(query=["reinforcement learning"])
+    results = kg_agent.run_retriever(query="reinforcement learning")
 
     assert len(results) > 0
 
@@ -69,6 +69,6 @@ def test_remote_url_processing(kg_agent):
 
     kg_agent.parse(content=test_url)
 
-    results = kg_agent.run(query=["PRIME", "RL"])
+    results = kg_agent.run_retriever(query="PRIME")
 
     assert len(results) > 0

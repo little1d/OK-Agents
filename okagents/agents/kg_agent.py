@@ -36,7 +36,7 @@ class KGAgent:
         """
         self.uio = UnstructuredIO()
         # 初始化 Knowledge Graph Agent
-        self.kg_agent = KnowledgeGraphAgent(model=model)
+        self.camel_kg_agent = KnowledgeGraphAgent(model=model)
 
         # 初始化 Neo4j 连接
         self.neo4j_graph = Neo4jGraph(
@@ -49,8 +49,6 @@ class KGAgent:
         self,
         content: Union[str, 'Element'],
         prompt: Optional[str] = None,
-        should_chunk: bool = True,
-        max_characters=500,
     ) -> str:
         """
         References:
@@ -62,10 +60,10 @@ class KGAgent:
         # TODO 目前 prompt 使用 camel 自定义的 system propmpt，返回的是 GraphElement 类似的 str形式。
         # 因为增加了 validate 部分，所以其实并不用严格返回，可以留到后面处理，需要自定义 prompt！！！
         """
-        elements = []
+        elements = ""
 
         if isinstance(content, Element):
-            elements = [content]
+            elements = content
 
         elif isinstance(content, str):
             # 检查是否是 URL
@@ -73,40 +71,28 @@ class KGAgent:
             is_url = all([parsed_url.scheme, parsed_url.netloc])
             if is_url or os.path.exists(content):
                 # 如果是 URL 或文件路径，解析文件或 URL
-                elements = self.uio.parse_file_or_url(input_path=content) or []
+                elements = self.uio.parse_file_or_url(input_path=content) or ""
                 print(
                     f"Parsed content from {'URL' if is_url else 'file'}: {content}"
                 )
             else:
                 # 如果是纯文本，创建文本元素
-                elements = [
-                    self.uio.create_element_from_text(
-                        text=content,
-                    )
-                ]
-                print(f"Parsed content as plain text : {elements}")
+                elements = self.uio.create_element_from_text(
+                    text=content,
+                )
+                print(f"Parsed content as plain text : {content}")
 
         if not elements:
             warnings.warn(
                 f"No elements were extracted from the content: {content}"
             )
+            return ""
         else:
-            # Chunk the content if required
-            chunks = (
-                self.uio.chunk_elements(
-                    chunk_type="chunk_by_title",
-                    elements=elements,
-                    max_characters=max_characters,
-                )
-                if should_chunk
-                else elements
-            )
-            print(f"Chunked content into {len(chunks)} parts")
-
-            # 运行知识图谱代理提取信息
-            pre_parsed_elements = self.kg_agent.run(
-                element=chunks,
+            pre_parsed_elements = self.camel_kg_agent.run(
+                element=elements,
                 parse_graph_elements=False,
+                # BUG 传不了 prompt 参数： https://github.com/camel-ai/camel/blob/master/camel/agents/knowledge_graph_agent.py#L147
+                # prompt=prompt,
             )
 
         return pre_parsed_elements
@@ -118,23 +104,50 @@ class KGAgent:
         # TODO 添加验证的逻辑  获取当前知识库节点和关系 --> 进行内容删减
         return content
 
-    def parse(self, content: str) -> None:
+    def parse(
+        self,
+        content: str,
+        should_chunk: bool = True,
+        max_characters: int = 500,
+    ) -> None:
         """
         解析文件，并转换为 node 和 relation，再将知识图谱元素保存到 Neo4j
-        """
-        pre_parsed = self.pre_parse(content=content)
-        validate = self.validate(pre_parsed)
-        # 转换为 GraphElement 对象，以添加进 Knowledge Graph
-        graph_elements = self.kg_agent.run(
-            element=validate, parse_graph_elements=True
-        )
-        self.neo4j_graph.add_graph_elements(
-            graph_elements=[graph_elements],
-        )
 
-    def run(
+        Args:
+            content (str): 要解析的内容
+            should_chunk (bool): 是否进行分块处理，默认为True
+            max_characters (int): 分块的最大字符数，默认为500
+        """
+        # 预处理内容
+        pre_parsed = self.pre_parse(content=content)
+
+        validated_content = self.validate(content=pre_parsed)
+
+        base_element = self.uio.create_element_from_text(validated_content)
+
+        if should_chunk:
+            # 分块处理
+            chunked_elements = self.uio.chunk_elements(
+                chunk_type="chunk_by_title",
+                elements=[base_element],  # 将单个元素放入列表
+                max_characters=max_characters,
+            )
+            print(f"Chunked content into {len(chunked_elements)} parts")
+        else:
+            chunked_elements = [base_element]
+
+        for chunk_element in chunked_elements:
+            graph_element = self.camel_kg_agent.run(
+                element=chunk_element,
+                parse_graph_elements=True,
+            )
+            self.neo4j_graph.add_graph_elements(
+                graph_elements=[graph_element],
+            )
+
+    def run_retriever(
         self,
-        query: List[str],
+        query: str,
     ) -> Any:
         """
         运行检索和推理
@@ -143,7 +156,7 @@ class KGAgent:
             text=query,
         )
         # Let Knowledge Graph Agent extract node and relationship information from the query
-        ans_element = self.kg_agent.run(
+        ans_element = self.camel_kg_agent.run(
             query_element, parse_graph_elements=True
         )
         # Match the enetity got from query in the knowledge graph storage content
@@ -156,7 +169,7 @@ class KGAgent:
         MATCH (n)<-[r]-(m {{id: '{node.id}'}})
         RETURN 'Node ' + m.id + ' (label: ' + labels(m)[0] + ') has relationship ' + type(r) + ' with Node ' + n.id + ' (label: ' + labels(n)[0] + ')' AS Description
         """
-            result = self.n4j.query(query=n4j_query)
+            result = self.neo4j_graph.query(query=n4j_query)
             kg_result.extend(result)
 
         kg_result = [item['Description'] for item in kg_result]

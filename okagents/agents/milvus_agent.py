@@ -60,7 +60,7 @@ class MilvusAgent:
         """
         self.retriever.process(content=content)
 
-    def run(
+    def run_retriever(
         self, query: str, top_k: int = 1, similarity_threshold: float = 0.7
     ) -> List[Dict]:
         """
