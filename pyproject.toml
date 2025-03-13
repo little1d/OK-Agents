@@ -8,6 +8,7 @@ dependencies = [
     "camel-ai==0.2.22",
     "neo4j==5.28.1",
     "pre-commit>=4.1.0",
+    "pymilvus>=2.5.5",
     "ruff==0.7.4",
 ]
 
