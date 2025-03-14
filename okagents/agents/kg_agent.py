@@ -56,46 +56,59 @@ class KGAgent:
 
         解析非结构化内容为知识图谱相关内容，支持 file、url 或纯文本。
         自动判断内容类型并执行分块处理。
-
-        # TODO 目前 prompt 使用 camel 自定义的 system propmpt，返回的是 GraphElement 类似的 str形式。
-        # 因为增加了 validate 部分，所以其实并不用严格返回，可以留到后面处理，需要自定义 prompt！！！
         """
-        elements = ""
-
         if isinstance(content, Element):
-            elements = content
+            # 如果已经是 Element 类型，直接处理
+            return self._process_single_element(content)
 
         elif isinstance(content, str):
             # 检查是否是 URL
             parsed_url = urlparse(content)
             is_url = all([parsed_url.scheme, parsed_url.netloc])
+
             if is_url or os.path.exists(content):
-                # 如果是 URL 或文件路径，解析文件或 URL
-                elements = self.uio.parse_file_or_url(input_path=content) or ""
-                print(
-                    f"Parsed content from {'URL' if is_url else 'file'}: {content}"
-                )
+                # URL 或文件路径的处理
+                return self._process_url_or_file(content, is_url)
             else:
-                # 如果是纯文本，创建文本元素
-                elements = self.uio.create_element_from_text(
-                    text=content,
-                )
-                print(f"Parsed content as plain text : {content}")
+                # 纯文本的处理
+                return self._process_plain_text(content)
 
-        if not elements:
-            warnings.warn(
-                f"No elements were extracted from the content: {content}"
-            )
+        return ""
+
+    def _process_single_element(self, element: Element) -> str:
+        """处理单个 Element"""
+        return self.camel_kg_agent.run(
+            element=element,
+            parse_graph_elements=False,
+        )
+
+    def _process_plain_text(self, text: str) -> str:
+        """处理纯文本"""
+        print(f"Parsed content as plain text: {text}")
+        element = self.uio.create_element_from_text(text=text)
+        return self._process_single_element(element)
+
+    def _process_url_or_file(self, path: str, is_url: bool) -> str:
+        """处理 URL 或文件"""
+        print(f"Parsed content from {'URL' if is_url else 'file'}: {path}")
+        element_lists = self.uio.parse_file_or_url(input_path=path) or []
+        if not element_lists:
+            warnings.warn(f"No elements were extracted from: {path}")
             return ""
-        else:
-            pre_parsed_elements = self.camel_kg_agent.run(
-                element=elements,
-                parse_graph_elements=False,
-                # BUG 传不了 prompt 参数： https://github.com/camel-ai/camel/blob/master/camel/agents/knowledge_graph_agent.py#L147
-                # prompt=prompt,
-            )
 
-        return pre_parsed_elements
+        chunk_elements = self.uio.chunk_elements(
+            chunk_type="chunk_by_title", elements=element_lists
+        )
+
+        results = []
+        for chunk in chunk_elements:
+            parsed = self.camel_kg_agent.run(
+                element=chunk,
+                parse_graph_elements=False,
+            )
+            results.append(parsed)
+
+        return "\n".join(results)
 
     def validate(self, content: str) -> str:
         """
@@ -107,8 +120,6 @@ class KGAgent:
     def parse(
         self,
         content: str,
-        should_chunk: bool = True,
-        max_characters: int = 500,
     ) -> None:
         """
         解析文件，并转换为 node 和 relation，再将知识图谱元素保存到 Neo4j
@@ -120,30 +131,19 @@ class KGAgent:
         """
         # 预处理内容
         pre_parsed = self.pre_parse(content=content)
-
+        # validate
         validated_content = self.validate(content=pre_parsed)
-
-        base_element = self.uio.create_element_from_text(validated_content)
-
-        if should_chunk:
-            # 分块处理
-            chunked_elements = self.uio.chunk_elements(
-                chunk_type="chunk_by_title",
-                elements=[base_element],  # 将单个元素放入列表
-                max_characters=max_characters,
-            )
-            print(f"Chunked content into {len(chunked_elements)} parts")
-        else:
-            chunked_elements = [base_element]
-
-        for chunk_element in chunked_elements:
-            graph_element = self.camel_kg_agent.run(
-                element=chunk_element,
-                parse_graph_elements=True,
-            )
-            self.neo4j_graph.add_graph_elements(
-                graph_elements=[graph_element],
-            )
+        # parse str to element
+        elements = self.uio.create_element_from_text(validated_content)
+        graph_element = self.camel_kg_agent.run(
+            element=elements,
+            parse_graph_elements=True,
+        )
+        # save
+        self.neo4j_graph.add_graph_elements(
+            graph_elements=[graph_element],
+        )
+        print(f"Save successfully, content: {graph_element}")
 
     def run_retriever(
         self,
