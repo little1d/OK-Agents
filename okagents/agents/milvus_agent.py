@@ -16,7 +16,6 @@ from camel.retrievers import VectorRetriever
 from camel.storages.vectordb_storages import VectorDBStatus
 from okagents.config import Config
 import logging
-import datetime
 from okagents.config import Config
 
 logger = logging.getLogger(__name__)
@@ -43,7 +42,7 @@ class MilvusAgent:
             collection_name=collection_name,
         )
 
-        # 初始化 AutoRetriever
+        # 初始化 VectorRetriever
         self.retriever = VectorRetriever(
             embedding_model=OpenAIEmbedding(
                 url=config.OPENAI_API_BASE, api_key=config.OPENAI_API_KEY
