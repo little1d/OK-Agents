@@ -1,0 +1,73 @@
+{
+    "name": "Optimization of Direct Arylation Reaction Yield",
+    "domain": "Organic Chemistry - Catalysis",
+    "description": "This experiment aims to optimize reaction conditions for direct arylation to maximize product yield by exploring different bases, ligands, solvents, concentrations, and temperatures.",
+    "constraint": "Reactions must be conducted under inert atmosphere with precise temperature and concentration control.",
+    "parameters_and_bounds": [
+        {
+            "name": "Base_SMILES",
+            "description": "The base used in the reaction, influencing deprotonation efficiency and reaction rate.",
+            "bounds": [
+                "O=C([O-])C(C)(C)C.[Cs+]",
+                "O=C([O-])C(C)(C)C.[K+]",
+                "O=C([O-])C.[Cs+]",
+                "O=C([O-])C.[K+]"
+            ],
+            "type": "discrete"
+        },
+        {
+            "name": "Ligand_SMILES",
+            "description": "The ligand used to stabilize the catalyst and influence selectivity and yield.",
+            "bounds": [
+                "C[C@]1(O2)O[C@](C[C@]2(C)P3C4=CC=CC=C4)(C)O[C@]3(C)C1",
+                "CC(C)(C)P(C1=CC=CC=C1)C(C)(C)C",
+                "CC(C)C1=CC(C(C)C)=C(C(C(C)C)=C1)C2=C(P(C3CCCCC3)C4CCCCC4)C(OC)=CC=C2OC",
+                "CC(C1=C(C2=CC=CC=C2P(C3CCCCC3)C4CCCCC4)C(C(C)C)=CC(C(C)C)=C1)C",
+                "CC(OC1=C(P(C2CCCCC2)C3CCCCC3)C(OC(C)C)=CC=C1)C",
+                "CN(C)C1=CC=CC(N(C)C)=C1C2=CC=CC=C2P(C(C)(C)C)C3=CC=CC=C3",
+                "CP(C)C1=CC=CC=C1",
+                "CP(C1=CC=CC=C1)C2=CC=CC=C2",
+                "FC(F)(F)C1=CC(P(C2=C(C3=C(C(C)C)C=C(C(C)C)C=C3C(C)C)C(OC)=CC=C2OC)C4=CC(C(F)(F)F)=CC(C(F)(F)F)=C4)=CC(C(F)(F)F)=C1",
+                "P(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=CC=C3",
+                "P(C1=CC=CO1)(C2=CC=CO2)C3=CC=CO3",
+                "P(C1CCCCC1)(C2CCCCC2)C3CCCCC3"
+            ],
+            "type": "discrete"
+        },
+        {
+            "name": "Solvent_SMILES",
+            "description": "The solvent used in the reaction, affecting solubility and reactivity.",
+            "bounds": [
+                "CC(N(C)C)=O",
+                "CC1=CC=C(C)C=C1",
+                "CCCC#N",
+                "CCCCOC(C)=O"
+            ],
+            "type": "discrete"
+        },
+        {
+            "name": "Concentration",
+            "description": "Molar concentration of the reactants in the reaction mixture.",
+            "bounds": [
+                0.057,
+                0.1,
+                0.153
+            ],
+            "type": "discrete"
+        },
+        {
+            "name": "Temp_C",
+            "description": "Reaction temperature in degrees Celsius.",
+            "bounds": [
+                90,
+                105,
+                120
+            ],
+            "type": "discrete"
+        }
+    ],
+    "target": {
+        "name": "Reaction Yield",
+        "description": "The percentage of product formation relative to the theoretical maximum."
+    }
+}
