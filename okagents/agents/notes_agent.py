@@ -8,16 +8,18 @@ r"""
      Notes Agent for extracting and managing key notes from reasoning data/preprocess data
 """
 
-from typing import Optional, List, Dict, Any, Union, Type
+from typing import Optional, List, Dict, Any, Type, Union
 from pydantic import BaseModel
 from camel.agents import ChatAgent
 from camel.models import BaseModelBackend
 from okagents.agents.kg_agent import KGAgent
 from okagents.agents.milvus_agent import MilvusAgent
+import json
+from camel.messages import BaseMessage
 
 
 class BaseNotesResponse(BaseModel):
-    """Base response format for notes extraction"""
+    """Base response format for notes extraction. All integrated classes must return str or List[str]"""
 
     notes: List[str]
 
@@ -90,7 +92,7 @@ class NotesAgent:
             final_prompt, response_format=save_schema
         )
 
-        self._store_notes(response.notes)
+        self._store_notes(response)
         return response
 
     def extract_experiment_info(
@@ -126,16 +128,50 @@ class NotesAgent:
             final_prompt,
             response_format=save_schema,
         )
-
-        self._store_notes(response.notes)
+        print(f"response content: {response}")
+        print(f"\nresponse type: {type(response)}")
+        self._store_notes(response)
         return response
 
-    def _store_notes(self, notes: List[str]):
-        """Internal method to store notes to both knowledge systems"""
-        if notes:
-            notes_text = "\n".join(notes)
-            self.kg_agent.parse(notes_text)
-            self.milvus_agent.parse(notes_text)
+    def _store_notes(self, response: Union[BaseNotesResponse, List[str]]):
+        """Internal method to store notes to both knowledge systems
+
+        Args:
+            response: 可以是以下类型之一：
+                - camel.ChatAgentResponse: ChatAgentResponse.msg 是 camel.BaseMessage (包含JSON格式内容)
+                - 字符串列表，所有字段必须是str或List[str]
+        """
+        if isinstance(response.msg, BaseMessage):
+            try:
+                # 提取JSON内容部分 (去除可能的代码块标记)
+                content = (
+                    response.msg.content.replace('```json\n', '')
+                    .replace('```', '')
+                    .strip()
+                )
+                data = json.loads(content)
+                # 收集所有可能的文本字段
+                text_parts = "\n".join(
+                    str(item)
+                    for value in data.values()
+                    for item in (value if isinstance(value, list) else [value])
+                )
+            except (json.JSONDecodeError, AttributeError) as e:
+                raise ValueError(
+                    f"Failed to parse message content: {e}"
+                ) from e
+
+        # 处理纯列表输入
+        elif isinstance(response, (list, tuple)):
+            text_parts = "\n".join(str(item) for item in response)
+        else:
+            raise TypeError(
+                f"Unsupported type, response attributes must be str or List[str]"
+            )
+
+        if text_parts:
+            self.kg_agent.parse(text_parts)
+            self.milvus_agent.parse(text_parts)
 
     def query_notes(
         self, query: str, top_k: int = 3, similarity_threshold: float = 0.7

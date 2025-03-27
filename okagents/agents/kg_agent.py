@@ -144,6 +144,7 @@ class KGAgent:
             graph_elements=[graph_element],
         )
         print(f"Save successfully, content: {graph_element}")
+        return graph_element
 
     def run_retriever(
         self,
